@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GoldenThreads IMS (Local)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Cormorant+Garamond:wght@300;400;500&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Inline fallback: ensure loading screen is hidden by default and only visible when active */
+        #loadingScreen {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background-color: #ffffff;
+            z-index: 99999;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #loadingScreen.active {
+            display: flex;
+        }
+
+        #loadingScreen .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(212, 175, 55, 0.25);
+            border-top: 4px solid #D4AF37;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Hide main app containers initially until auth resolved */
+        #loginPage,
+        #mainLayout {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="loginPage" class="page">
+        <div class="login-container">
+            <!-- Left Side - Branding -->
+            <div class="login-left">
+                <div class="brand-section">
+                    <h1 class="brand-title">GoldenThreads</h1>
+                    <p class="brand-subtitle">INTEGRATED MANAGEMENT SYSTEM</p>
+                    <p style="margin-top: 1.5rem; font-size: 0.85rem; color: #D4AF37; font-style: italic;">Firebase
+                        Cloud Version</p>
+                </div>
+                <div class="decorative-pattern"></div>
+            </div>
+
+            <!-- Right Side - Auth Forms -->
+            <div class="login-right">
+                <div class="login-form-wrapper">
+                    <!-- Auth Form Tabs -->
+                    <div class="auth-tabs">
+                        <button class="auth-tab-btn active" data-tab="login" onclick="switchAuthTab('login')">
+                            Login
+                        </button>
+                        <button class="auth-tab-btn" data-tab="register" onclick="switchAuthTab('register')">
+                            Register
+                        </button>
+                        <button class="auth-tab-btn" data-tab="forgot" onclick="switchAuthTab('forgot')">
+                            Forgot Password
+                        </button>
+                    </div>
+
+                    <!-- LOGIN FORM -->
+                    <div id="loginTab" class="auth-form-container active">
+                        <div class="welcome-header">
+                            <h2 class="welcome-title">Welcome Back</h2>
+                            <p class="welcome-subtitle">Sign in to access your dashboard</p>
+                        </div>
+
+                        <!-- Role Selector -->
+                        <div class="role-selector">
+                            <button type="button" class="role-btn active" data-role="admin">
+                                ADMIN
+                            </button>
+                            <button type="button" class="role-btn" data-role="staff">
+                                STAFF
+                            </button>
+                        </div>
+
+                        <!-- Login Form -->
+                        <form id="loginForm" class="login-form" novalidate>
+                            <div class="form-group">
+                                <label for="username">USERNAME</label>
+                                <input type="text" id="username" name="username" placeholder="Enter your username"
+                                    autocomplete="username" required>
+                                <span class="error-message" id="usernameError"></span>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="password">PASSWORD</label>
+                                <input type="password" id="password" name="password" placeholder="Enter your password"
+                                    autocomplete="current-password" required>
+                                <span class="error-message" id="passwordError"></span>
+                            </div>
+
+                            <!-- Error Message Display -->
+                            <div class="form-error" id="formError" style="display: none;"></div>
+
+                            <!-- Submit Button -->
+                            <button type="submit" class="sign-in-btn">
+                                <span>LOG IN</span>
+                            </button>
+                        </form>
+
+                        <!-- Footer -->
+                        <div class="login-footer">
+                            <p>GoldenThreads Garments Manufacturing &copy; 2026 (Local Version)</p>
+                        </div>
+                    </div>
+
+                    <!-- REGISTER FORM -->
+                    <div id="registerTab" class="auth-form-container">
+                        <div class="welcome-header">
+                            <h2 class="welcome-title">Create Account</h2>
+                            <p class="welcome-subtitle">Register a new account to get started</p>
+                        </div>
+
+                        <!-- Register Form -->
+                        <form id="registerForm" class="login-form" novalidate>
+                            <div class="form-group">
+                                <label for="reg_fullname">FULL NAME</label>
+                                <input type="text" id="reg_fullname" name="fullname" placeholder="Enter your full name"
+                                    required>
+                                <span class="error-message" id="fullnameError"></span>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="reg_username">USERNAME</label>
+                                <input type="text" id="reg_username" name="username" placeholder="Choose a username"
+                                    required>
+                                <span class="error-message" id="regUsernameError"></span>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="reg_email">EMAIL ADDRESS</label>
+                                <input type="email" id="reg_email" name="email" placeholder="Enter your email address"
+                                    required>
+                                <span class="error-message" id="regEmailError"></span>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="reg_password">PASSWORD</label>
+                                <input type="password" id="reg_password" name="password" placeholder="Create a password"
+                                    required>
+                                <span class="error-message" id="regPasswordError"></span>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="reg_confirm_password">CONFIRM PASSWORD</label>
+                                <input type="password" id="reg_confirm_password" name="confirm_password"
+                                    placeholder="Confirm your password" required>
+                                <span class="error-message" id="confirmPasswordError"></span>
+                            </div>
+
+                            <!-- Role Selection -->
+                            <div class="form-group">
+                                <label for="reg_role">ROLE</label>
+                                <select id="reg_role" name="role" required
+                                    style="width:100%;padding:0.5rem;border:1px solid var(--border);border-radius:4px;background:white;color:var(--text-muted);font-size:0.9rem;">
+                                    <option value="">Select Role...</option>
+                                    <option value="admin">ADMIN</option>
+                                    <option value="staff">STAFF</option>
+                                </select>
+                                <span class="error-message" id="roleError"></span>
+                            </div>
+
+                            <!-- Error Message Display -->
+                            <div class="form-error" id="registerFormError" style="display: none;"></div>
+
+                            <!-- Submit Button -->
+                            <button type="submit" class="sign-in-btn">
+                                <span>CREATE ACCOUNT</span>
+                            </button>
+                        </form>
+
+                        <!-- Footer -->
+                        <div class="login-footer">
+                            <p>GoldenThreads Garments Manufacturing &copy; 2026 (Local Version)</p>
+                        </div>
+                    </div>
+
+                    <!-- FORGOT PASSWORD FORM -->
+                    <div id="forgotTab" class="auth-form-container">
+                        <div class="welcome-header">
+                            <h2 class="welcome-title">Reset Password</h2>
+                            <p class="welcome-subtitle">Enter your email to reset your password</p>
+                        </div>
+
+                        <!-- Forgot Password Form -->
+                        <form id="forgotForm" class="login-form" novalidate>
+                            <div class="form-group">
+                                <label for="forgot_email">EMAIL ADDRESS</label>
+                                <input type="email" id="forgot_email" name="email"
+                                    placeholder="Enter your email address" required>
+                                <span class="error-message" id="forgotEmailError"></span>
+                            </div>
+
+                            <!-- Error Message Display -->
+                            <div class="form-error" id="forgotFormError" style="display: none;"></div>
+
+                            <!-- Success Message Display -->
+                            <div class="form-success" id="forgotFormSuccess" style="display: none;"></div>
+
+                            <!-- Submit Button -->
+                            <button type="submit" class="sign-in-btn">
+                                <span>SEND RESET EMAIL</span>
+                            </button>
+                        </form>
+
+                        <!-- Footer -->
+                        <div class="login-footer">
+                            <p>GoldenThreads Garments Manufacturing &copy; 2026</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== MAIN DASHBOARD LAYOUT ========================================== -->
+    <div id="mainLayout" class="page" style="display: none;">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo-area">
+                <div class="logo">GoldenThreads</div>
+                <div class="logo-subtitle">IMS</div>
+            </div>
+
+            <nav class="nav-menu">
+                <ul>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link active" data-page="dashboard"
+                            onclick="event.preventDefault(); navigateTo('dashboard')">
+                            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <rect x="3" y="3" width="7" height="7"></rect>
+                                <rect x="14" y="3" width="7" height="7"></rect>
+                                <rect x="14" y="14" width="7" height="7"></rect>
+                                <rect x="3" y="14" width="7" height="7"></rect>
+                            </svg>
+                            <span>Dashboard</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link" data-page="order_job"
+                            onclick="event.preventDefault(); navigateTo('orders')">
+                            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8"></polyline>
+                                <line x1="16" y1="13" x2="8" y2="13"></line>
+                                <line x1="16" y1="17" x2="8" y2="17"></line>
+                                <polyline points="10 9 9 9 8 9"></polyline>
+                            </svg>
+                            <span>Orders & Jobs</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link" data-page="Production_Quality"
+                            onclick="event.preventDefault(); navigateTo('production')">
+                            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <circle cx="12" cy="12" r="3"></circle>
+                                <path
+                                    d="M12 1v6m0 6v6m5.196-14.196l-4.242 4.242m0 5.908l4.242 4.242m7.778-9.196h-6m-6 0H1m14.196 5.196l-4.242-4.242m0-5.908l4.242-4.242">
+                                </path>
+                            </svg>
+                            <span>Production</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link" data-page="packaging"
+                            onclick="event.preventDefault(); navigateTo('packaging')">
+                            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path
+                                    d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
+                                </path>
+                                <polyline points="7.5 4.21 12 6.81 16.5 4.21"></polyline>
+                                <polyline points="7.5 19.79 7.5 14.6 3 12"></polyline>
+                                <polyline points="21 12 16.5 14.6 16.5 19.79"></polyline>
+                                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                                <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                            </svg>
+                            <span>Packaging</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link" data-page="billing_delivery"
+                            onclick="event.preventDefault(); navigateTo('billing')">
+                            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect>
+                                <line x1="1" y1="10" x2="23" y2="10"></line>
+                            </svg>
+                            <span>Billing & Delivery</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link" data-page="inventory"
+                            onclick="event.preventDefault(); navigateTo('inventory')">
+                            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
+                                <path
+                                    d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
+                                </path>
+                                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                                <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                            </svg>
+                            <span>Inventory</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link" data-page="Employee_Payroll"
+                            onclick="event.preventDefault(); navigateTo('payroll')">
+                            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="9" cy="7" r="4"></circle>
+                                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                            </svg>
+                            <span>Employees</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link" data-page="reports"
+                            onclick="event.preventDefault(); navigateTo('reports')">
+                            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <line x1="12" y1="20" x2="12" y2="10"></line>
+                                <line x1="18" y1="20" x2="18" y2="4"></line>
+                                <line x1="6" y1="20" x2="6" y2="16"></line>
+                            </svg>
+                            <span>Reports</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+
+            <!-- User Section -->
+            <div class="user-section">
+                <div class="user-info" id="userMenu" onclick="toggleUserMenu()"
+                    style="cursor: pointer; position: relative;">
+                    <div class="user-avatar" id="userAvatar">GT</div>
+                    <div class="user-details">
+                        <div class="user-name" id="userName">Admin User</div>
+                        <div class="user-role" id="userRole">Administrator</div>
+                    </div>
+                    <div class="user-menu-dropdown" id="userMenuDropdown">
+                        <a href="#" class="dropdown-item account-settings-item" id="accountSettingsItem"
+                            onclick="event.preventDefault(); event.stopPropagation(); toggleAccountSubmenu()">
+                            Account Settings
+                            <span class="submenu-arrow">›</span>
+                        </a>
+                        <div class="account-submenu" id="accountSubmenu">
+                            <a href="#" class="submenu-item"
+                                onclick="event.preventDefault(); event.stopPropagation(); openChangePassword()">Change
+                                Password</a>
+                            <a href="#" class="submenu-item"
+                                onclick="event.preventDefault(); event.stopPropagation(); openDeleteAccount()">Delete
+                                Account</a>
+                        </div>
+                        <div class="dropdown-divider"></div>
+                        <a href="#" class="dropdown-item"
+                            onclick="event.preventDefault(); event.stopPropagation(); confirmLogout()">Logout</a>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Top Bar -->
+            <header class="top-bar">
+                <div class="page-title-section">
+                    <h1 class="page-title" id="pageTitle">Dashboard</h1>
+                    <p class="page-subtitle" id="pageSubtitle">Overview of your system</p>
+                </div>
+                <div class="header-actions">
+                    <!-- Header action buttons injected dynamically here -->
+                </div>
+            </header>
+
+            <!-- Content Area (Dynamic) -->
+            <div class="content-area" id="contentArea">
+                <!-- Dashboard content loaded here dynamically -->
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals will be appended dynamically -->
+    <div id="modalContainer"></div>
+
+    <!-- Loading Screen -->
+    <div id="loadingScreen" class="loading-screen">
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <p id="loadingText">Loading...</p>
+        </div>
+    </div>
+
+    <!-- Global error handlers to capture uncaught errors and promise rejections -->
+    <script>
+        window.addEventListener('error', function (e) {
+            try {
+                console.error('Global Error captured:', e.message, 'at', e.filename + ':' + e.lineno + ':' + e.colno);
+                if (e.error && e.error.stack) console.error(e.error.stack);
+            } catch (err) {
+                console.error('Error while logging global error:', err);
+            }
+        });
+
+        window.addEventListener('unhandledrejection', function (e) {
+            try {
+                console.error('Unhandled Promise Rejection captured:', e.reason && (e.reason.message || e.reason));
+                if (e.reason && e.reason.stack) console.error(e.reason.stack);
+            } catch (err) {
+                console.error('Error while logging unhandled rejection:', err);
+            }
+        });
+    </script>
+
+    <!-- Firebase SDK - Use compat UMD bundles so global `firebase` is available -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js" defer
+        crossorigin="anonymous"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js" defer
+        crossorigin="anonymous"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js" defer
+        crossorigin="anonymous"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js" defer
+        crossorigin="anonymous"></script>
+
+    <!-- Firebase Configuration - Wait for DOM ready -->
+    <script src="firebase-config.js" defer></script>
+
+    <!-- Application Script - Load last -->
+    <script src="ims-local.js" defer></script>
+</body>
+
+</html>
