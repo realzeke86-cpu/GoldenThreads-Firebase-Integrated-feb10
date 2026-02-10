@@ -500,6 +500,7 @@ function navigateTo(pageName) {
         mainLayout.style.display = 'none';
         mainLayout.classList.remove('active');
         AppState.currentPage = 'login';
+        clearLoginErrors();
     } else {
         loginPage.style.display = 'none';
         loginPage.classList.remove('active');
@@ -607,7 +608,8 @@ const DEMO_USERS = {
     staff: { username: 'staff', password: 'staff123', role: 'staff' }
 };
 
-let selectedRole = 'admin';
+let selectedRole = null;
+let isNewlyRegistered = false;
 
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('📄 DOM Content Loaded - Waiting for Firebase SDK...');
@@ -685,19 +687,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 function initializeLoginPage() {
-    const roleButtons = document.querySelectorAll('.role-btn');
     const loginForm = document.getElementById('loginForm');
     const registerForm = document.getElementById('registerForm');
     const forgotForm = document.getElementById('forgotForm');
-
-    roleButtons.forEach(button => {
-        button.addEventListener('click', () => {
-            roleButtons.forEach(btn => btn.classList.remove('active'));
-            button.classList.add('active');
-            selectedRole = button.dataset.role;
-            clearLoginErrors();
-        });
-    });
 
     // Login form
     if (loginForm) loginForm.addEventListener('submit', handleLogin);
@@ -753,6 +745,11 @@ function switchAuthTab(tabName) {
 
     // Clear any error messages
     clearLoginErrors();
+
+    // Reset selected role when switching to login
+    if (tabName === 'login') {
+        selectedRole = null;
+    }
 }
 
 // ==========================================
@@ -797,139 +794,129 @@ function handleLogin(e) {
 
     const username = document.getElementById('username').value.trim();
     const password = document.getElementById('password').value;
+    const submitBtn = document.querySelector('#loginTab button[type="submit"]');
 
-    let hasError = false;
-
-    if (!username || username.length < 3) {
-        showFieldError(document.getElementById('username'), document.getElementById('usernameError'), 'Please enter your username');
-        hasError = true;
+    // Validation
+    if (!username) {
+        showFieldError(document.getElementById('username'), document.getElementById('usernameError'), 'Username is required');
+        return;
     }
 
-    if (!password || password.length < 6) {
-        showFieldError(document.getElementById('password'), document.getElementById('passwordError'), 'Password must be at least 6 characters');
-        hasError = true;
+    if (!password) {
+        showFieldError(document.getElementById('password'), document.getElementById('passwordError'), 'Password is required');
+        return;
     }
 
-    if (hasError) return;
+    // Disable button and show loading
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.querySelector('span').textContent = 'LOGGING IN...';
+    }
+    showLoading('Verifying your credentials...');
 
-    const submitBtn = document.querySelector('.sign-in-btn');
-    submitBtn.disabled = true;
-    submitBtn.querySelector('span').textContent = 'LOGGING IN...';
-    showLoading('Verifying credentials...');
+    // Step 1: Lookup user by username in Firestore to get their email
+    console.log('🔍 Looking up user: ' + username);
 
-    // Step 1: Lookup user by username in Firestore to get their actual email
-    console.log('🔍 Looking up user:', username);
     db.collection(FIRESTORE_COLLECTIONS.users)
         .where('username', '==', username)
         .limit(1)
         .get()
-        .then(querySnapshot => {
-            if (querySnapshot.empty) {
-                // User not found in Firestore, try fallback email format
-                console.log('⚠️ User not found in Firestore, trying fallback email format');
-                let email = username;
-                if (!email.includes('@')) {
-                    email = username + '@goldenthreads.local';
-                }
-                return Promise.resolve({ email: email, user: null });
+        .then(snapshot => {
+            if (snapshot.empty) {
+                throw new Error('Username not found');
             }
 
-            const userDoc = querySnapshot.docs[0];
-            const userData = userDoc.data();
-            console.log('✓ User found in Firestore:', userData.email, 'Role:', userData.role);
-            return Promise.resolve({ email: userData.email, user: userData });
+            const userData = snapshot.docs[0].data();
+            console.log('✓ User found:', userData.username, 'Email:', userData.email);
+            return userData.email;
         })
-        .catch(lookupError => {
-            console.error('❌ Error looking up user in Firestore:', lookupError.message);
-            hideLoading();
-            showFormError('Database error during login. Please check your connection and try again.');
-            submitBtn.disabled = false;
-            submitBtn.querySelector('span').textContent = 'LOG IN';
-            throw lookupError;
-        })
-        .then(({ email, user }) => {
-            // Step 2: Authenticate with Firebase using the actual registered email
-            console.log('🔐 Authenticating with Firebase:', email);
-            return auth.signInWithEmailAndPassword(email, password)
-                .then(userCredential => {
-                    return { userCredential, user };
-                });
-        })
-        .then(({ userCredential, user }) => {
-            hideLoading();
-
-            // Step 3: Load user data from Firestore
-            const userId = userCredential.user.uid;
-            return db.collection(FIRESTORE_COLLECTIONS.users).doc(userId).get().then(doc => {
-                if (doc.exists) {
-                    AppState.currentUser = {
-                        uid: doc.id,
-                        username: doc.data().username,
-                        fullName: doc.data().fullName,
-                        role: doc.data().role,
-                        displayName: doc.data().fullName,
-                        email: doc.data().email
-                    };
-                } else {
-                    // Fallback: create user profile if it doesn't exist (shouldn't happen)
-                    AppState.currentUser = {
-                        uid: userId,
-                        username: username,
-                        fullName: username,
-                        role: 'staff',
-                        displayName: username,
-                        email: userCredential.user.email
-                    };
-                    db.collection(FIRESTORE_COLLECTIONS.users).doc(userId).set(AppState.currentUser);
-                }
-
-                console.log('✓ User loaded:', AppState.currentUser.username, 'Role:', AppState.currentUser.role);
-                console.log('📊 Selected role on login page:', selectedRole);
-
-                // Step 4: Validate that user's role matches the selected role on login page
-                if (selectedRole && AppState.currentUser.role !== selectedRole) {
-                    hideLoading();
-                    const errorMsg = `Access denied. Your account is registered as ${AppState.currentUser.role.toUpperCase()}, not ${selectedRole.toUpperCase()}.\n\nPlease select the correct role (${AppState.currentUser.role.toUpperCase()}) and try again.`;
-                    console.error('❌ Role mismatch:', errorMsg);
-                    showFormError(errorMsg);
+        .catch(err => {
+            if (err.message === 'Username not found') {
+                hideLoading();
+                showFormError('Username not found. Please check and try again.');
+                if (submitBtn) {
                     submitBtn.disabled = false;
                     submitBtn.querySelector('span').textContent = 'LOG IN';
-                    // Sign out the user since role doesn't match
-                    auth.signOut();
-                    return;
                 }
+                throw new Error('continue');
+            }
+            // If firestore permission error, try email fallback
+            throw err;
+        })
+        .then(email => {
+            // Step 2: Authenticate with Firebase
+            console.log('🔐 Authenticating with Firebase...');
+            return auth.signInWithEmailAndPassword(email, password);
+        })
+        .then(userCredential => {
+            // Step 3: Load user profile and app data
+            console.log('✓ Authentication successful');
+            const userId = userCredential.user.uid;
 
+            return db.collection(FIRESTORE_COLLECTIONS.users).doc(userId).get()
+                .then(doc => {
+                    if (doc.exists) {
+                        AppState.currentUser = {
+                            uid: doc.id,
+                            username: doc.data().username,
+                            fullName: doc.data().fullName,
+                            email: doc.data().email,
+                            role: doc.data().role,
+                            displayName: doc.data().fullName
+                        };
+                    } else {
+                        throw new Error('User profile not found');
+                    }
+
+                    console.log('✓ User profile loaded:', AppState.currentUser.username, 'Role:', AppState.currentUser.role);
+                    return loadAllDataFromFirestore();
+                });
+        })
+        .then(() => {
+            // Show success and redirect to dashboard
+            hideLoading();
+            if (submitBtn) {
                 submitBtn.querySelector('span').textContent = 'SUCCESS!';
                 submitBtn.style.background = '#27AE60';
+            }
 
-                setTimeout(() => {
-                    navigateTo('dashboard');
-                    initializeMainLayout();
-                    setupRealtimeListener(); // Start real-time sync
-                    applyRolePermissions();
-                }, 500);
-            });
+            setTimeout(() => {
+                navigateTo('dashboard');
+                initializeMainLayout();
+                setupRealtimeListener();
+                applyRolePermissions();
+            }, 500);
         })
         .catch(error => {
+            if (error.message === 'continue') return;
+
             hideLoading();
             console.error('❌ Login error:', error.code, error.message);
-            let errorMessage = 'Login failed. Please check your credentials.';
+
+            let errorMessage = 'Login failed. Please try again.';
 
             if (error.code === 'auth/user-not-found') {
-                errorMessage = 'Username not found. Please check and try again.';
+                errorMessage = 'Username not found.';
             } else if (error.code === 'auth/wrong-password') {
                 errorMessage = 'Incorrect password. Please try again.';
-            } else if (error.code === 'auth/invalid-email') {
-                errorMessage = 'Invalid username format.';
+            } else if (error.code === 'auth/too-many-requests') {
+                errorMessage = 'Too many failed attempts. Please try again later.';
             } else if (error.code === 'auth/user-disabled') {
                 errorMessage = 'This account has been disabled.';
+            } else if (error.code === 'invalid-credential' || error.message?.includes('invalid-credential')) {
+                errorMessage = 'Invalid username or password.';
             }
 
             showFormError(errorMessage);
-            submitBtn.disabled = false;
-            submitBtn.querySelector('span').textContent = 'LOG IN';
+
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.querySelector('span').textContent = 'LOG IN';
+                submitBtn.style.background = '';
+            }
         });
 }
+
 
 function handleRegister(e) {
     e.preventDefault();
@@ -965,7 +952,17 @@ function handleRegister(e) {
     }
 
     if (!role) {
-        showFieldError(document.getElementById('reg_role'), document.getElementById('roleError'), 'Please select a role');
+        const modal = createModal('⚠️ Choose a Role', `
+            <p style="font-size: 1rem; color: #666; text-align: center; padding: 1rem 0;">
+                Please select a role to continue with registration.
+            </p>
+            <button type="button" onclick="closeModal(); document.getElementById('reg_role').focus();" 
+                style="width: 100%; padding: 0.7rem; background: var(--navy-dark); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-family: 'Cormorant Garamond', serif; letter-spacing: 0.05em; font-size: 0.95rem;">
+                OK
+            </button>
+        `);
+        document.getElementById('modalContainer').appendChild(modal);
+        modal.classList.add('active');
         hasError = true;
     }
 
@@ -1010,11 +1007,19 @@ function handleRegister(e) {
             };
 
             console.log('📝 Saving user profile to Firestore:', userProfile);
-            return db.collection(FIRESTORE_COLLECTIONS.users).doc(userId).set(userProfile);
+            console.log('Collection name:', FIRESTORE_COLLECTIONS.users);
+
+            const savePromise = db.collection(FIRESTORE_COLLECTIONS.users).doc(userId).set(userProfile);
+            console.log('Firestore set() called, promise created:', savePromise);
+
+            return savePromise;
         })
         .then(() => {
-            console.log('✓ User profile saved to Firestore successfully');
-            hideLoading();
+            console.log('✓✓✓ THEN BLOCK EXECUTED - User profile saved to Firestore successfully ✓✓✓');
+
+            // NOW set the flag - only after Firestore save succeeds
+            isNewlyRegistered = true;
+
             if (submitBtn) {
                 submitBtn.className = 'sign-in-btn';
                 submitBtn.querySelector('span').textContent = 'ACCOUNT CREATED!';
@@ -1023,12 +1028,18 @@ function handleRegister(e) {
 
             showMessage('Success', 'Account created successfully! You can now log in.', 'success');
 
+            // Show loading screen to transition to login form
+            showLoading('Preparing login form...');
+
             setTimeout(() => {
                 // Clear form
                 const registerForm = document.getElementById('registerForm');
                 if (registerForm) registerForm.reset();
-                // Switch to login tab
+
+                // Hide the loading screen and switch to login tab
+                hideLoading();
                 switchAuthTab('login');
+
                 // Reset button
                 if (submitBtn) {
                     submitBtn.className = 'sign-in-btn';
@@ -1036,35 +1047,75 @@ function handleRegister(e) {
                     submitBtn.style.background = '';
                     submitBtn.disabled = false;
                 }
-            }, 2000);
+
+                // Now sign out after Firestore has had time to save
+                auth.signOut().then(() => {
+                    isNewlyRegistered = false;
+                    console.log('✓ New user signed out after registration');
+                });
+            }, 1000);
         })
         .catch(error => {
             hideLoading();
             console.error('❌ Registration error:', error.code, error.message);
+            console.error('Full error object:', error);
+
+            // Reset the registration flag since registration failed
+            isNewlyRegistered = false;
+
             let errorMessage = 'Registration failed. Please try again.';
 
-            // Handle Auth errors
+            // Handle specific errors
             if (error.code === 'auth/email-already-in-use') {
                 errorMessage = 'This email is already registered. Please use a different email or try logging in.';
+                // Show modal for email-already-in-use error
+                const modal = createModal('Account Already Exists', `
+                    <div style="padding: 1rem 0;">
+                        <p style="font-size: 1rem; color: #666; margin-bottom: 1.5rem; line-height: 1.6;">
+                            The email address <strong>${emailInput.value}</strong> is already connected to an existing account.
+                        </p>
+                        <div style="background: #FFF3CD; border-left: 4px solid #FFC107; padding: 1rem; border-radius: 4px; margin-bottom: 1.5rem;">
+                            <p style="margin: 0; color: #856404; font-size: 0.95rem;">
+                                <strong>What you can do:</strong><br>
+                                • Use a different email address to create a new account<br>
+                                • Log in with this email if you already have an account<br>
+                                • Reset your password if you forgot it
+                            </p>
+                        </div>
+                        <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                            <button type="button" onclick="closeModal(); document.getElementById('reg_email').focus();" 
+                                style="flex:1; padding:0.7rem 1.5rem; background:#F0F0F0; color:var(--navy-dark); border:2px solid #DDD; border-radius:6px; font-weight:600; cursor:pointer; transition:all 0.2s ease; font-family:'Cormorant Garamond',serif; letter-spacing:0.05em; font-size:0.9rem;">
+                                Try Different Email
+                            </button>
+                            <button type="button" onclick="closeModal(); switchAuthTab('login');" 
+                                style="flex:1; padding:0.7rem 1.5rem; background:var(--navy-dark); color:white; border:none; border-radius:6px; font-weight:600; cursor:pointer; transition:all 0.2s ease; font-family:'Cormorant Garamond',serif; letter-spacing:0.05em; font-size:0.9rem;">
+                                Go to Login
+                            </button>
+                        </div>
+                    </div>
+                `);
+                document.getElementById('modalContainer').appendChild(modal);
+                modal.classList.add('active');
             } else if (error.code === 'auth/weak-password') {
-                errorMessage = 'Password is too weak. Please use a stronger password (at least 6 characters).';
+                errorMessage = 'Password is too weak. Please use at least 6 characters.';
+                showFormError(errorMessage, 'registerFormError');
             } else if (error.code === 'auth/invalid-email') {
-                errorMessage = 'Invalid email format. Please enter a valid email address.';
-            }
-            // Handle Firestore errors
-            else if (error.code === 'permission-denied') {
-                errorMessage = 'Permission denied. Unable to save profile to database. Please contact administrator.';
-            } else if (error.code === 'firestore/failed-precondition' || error.message?.includes('FAILED_PRECONDITION')) {
-                errorMessage = 'Database error. Please check your Firebase configuration and rules.';
-            } else if (error.message && error.message.includes('Firestore')) {
-                errorMessage = 'Database error: ' + error.message;
+                errorMessage = 'Invalid email format. Please enter a valid email.';
+                showFormError(errorMessage, 'registerFormError');
+            } else if (error.code === 'permission-denied') {
+                errorMessage = 'Permission denied saving to database. Please contact administrator.';
+                showFormError(errorMessage, 'registerFormError');
+            } else {
+                // Generic error
+                showFormError(errorMessage, 'registerFormError');
             }
 
-            console.error('Full error object:', error);
-            showFormError(errorMessage, 'registerFormError');
+            // Always reset button to enabled state
             if (submitBtn) {
                 submitBtn.disabled = false;
+                submitBtn.className = 'sign-in-btn';
                 submitBtn.querySelector('span').textContent = 'CREATE ACCOUNT';
+                submitBtn.style.background = '';
             }
         });
 }
@@ -1167,9 +1218,23 @@ function createUserSession(user) {
 }
 
 function checkExistingSession() {
+    // Reset role selection - no role enforcement on initial load
+    selectedRole = null;
+
     // Use Firebase Auth to check if user is logged in
     auth.onAuthStateChanged(user => {
         if (user) {
+            // Check if this is a newly registered user - skip dashboard and just sign out/show login
+            if (isNewlyRegistered) {
+                console.log('ℹ️ Newly registered user detected - showing login page');
+                auth.signOut().then(() => {
+                    isNewlyRegistered = false;
+                    navigateTo('login');
+                    hideLoading();
+                });
+                return;
+            }
+
             // User is logged in, load their Firestore data
             const userId = user.uid;
             db.collection(FIRESTORE_COLLECTIONS.users).doc(userId).get()
@@ -1197,7 +1262,7 @@ function checkExistingSession() {
                         db.collection(FIRESTORE_COLLECTIONS.users).doc(userId).set(AppState.currentUser);
                     }
 
-                    // Load all user data then show app
+                    // Load all user data then show app (using their actual registered role)
                     loadAllDataFromFirestore().then(() => {
                         navigateTo('dashboard');
                         initializeMainLayout();
